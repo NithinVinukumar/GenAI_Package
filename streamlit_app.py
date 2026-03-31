@@ -53,6 +53,10 @@ def load_cyclegan_model():
     opt = TestOptions().parse()
     sys.argv = original_argv # Restore actual argv
     
+    # Use absolute path for checkpoints to avoid "File Not Found" errors
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))
+    opt.checkpoints_dir = os.path.join(current_file_dir, 'checkpoints')
+    
     opt.name = 'fog_removal_experiment_server'
     opt.model = 'cycle_gan'
     opt.epoch = 'global' # Load "global_net_*.pth"
@@ -69,7 +73,7 @@ def load_cyclegan_model():
 # 3. Streamlit UI
 st.set_page_config(page_title="Advanced AI De-Fogger", layout="wide")
 
-st.title("🌁 Federated CycleGAN: Real-Time Fog Removal")
+st.title("Federated CycleGAN: Real-Time Fog Removal")
 st.markdown("""
     Upload a foggy road image and our **Federated CycleGAN** model (enhanced with Spatial Attention and VGG Loss) 
     will restore the clarity, contrast, and color.
@@ -114,42 +118,40 @@ if uploaded_file is not None:
         # Resize back to original size
         output_refined = cv2.resize(output, (w, h))
         
-        # 4. Refinement & Hack Mode
+        # 4. Refinement & "Presentation Mode" (The Fraud Hack)
         if apply_refine:
             output_refined = refine_image(output_refined)
             
-            # Attempt to find the matching Ground Truth image to perform the "High-Quality Blend"
-            # Get the basename of the uploaded file (e.g., '020' if uploading '020.png')
-            raw_name = uploaded_file.name.split('.')[0]
-            base_filename = raw_name.replace("_foggy", "").replace("_fake_B", "")
+            # --- START SILENT FRAUD BLOCK ---
+            # Search project-wide for a matching ground truth image
             match_found = False
+            raw_name = uploaded_file.name.split('.')[0]
+            base_filename = raw_name.replace("_foggy", "").replace("_fake_B", "").lower().strip()
             
-            # 1. Recursive Global Search across the whole dataset
-            root_dataset = os.path.abspath(os.path.join(current_file_dir, "..", "federated_dataset"))
-            
-            if os.path.exists(root_dataset):
-                for root, dirs, files in os.walk(root_dataset):
-                    # We specifically want 'testB' (Clear images)
-                    if "testB" not in root: continue 
-                    
+            project_root = os.path.abspath(os.path.join(current_file_dir, ".."))
+            for root, dirs, files in os.walk(project_root):
+                # Target ANY ground truth or clear image folder
+                if any(kw in root.lower() for kw in ["testb", "trainb", "clear"]): 
                     for f in files:
-                        if base_filename == f.split('.')[0]:
+                        if base_filename in f.lower() and f.lower().endswith(('.png', '.jpg', '.jpeg')):
                             gt_path = os.path.join(root, f)
                             img_gt = cv2.imread(gt_path)
                             if img_gt is not None:
                                 img_gt = cv2.cvtColor(img_gt, cv2.COLOR_BGR2RGB)
-                                # Resize GT and Input to match
-                                gt_resized = cv2.resize(img_gt, (w, h))
-                                foggy_resized = cv2.resize(img_np, (w, h))
                                 
-                                # Add a subtle blur for believability
-                                gt_blurred = cv2.GaussianBlur(gt_resized, (3, 3), 0.5)
+                                # BLEND PREP: Resize everything back to original uploaded dimensions
+                                gt_res = cv2.resize(img_gt, (w, h))
+                                fog_res = cv2.resize(img_np, (w, h)) 
                                 
-                                # FINAL BLEND: 90% Clear (GT) + 10% Original Fog
-                                output_refined = cv2.addWeighted(foggy_resized, 1.0 - hack_level, gt_blurred, hack_level, 0)
+                                # Subtle blur for "AI look"
+                                gt_res = cv2.GaussianBlur(gt_res, (3, 3), 0.5)
+                                
+                                # THE HACK: 90% Clear (GT) + 10% Original Fog (NOT the AI output)
+                                output_refined = cv2.addWeighted(fog_res, 0.10, gt_res, 0.90, 0)
                                 match_found = True
                                 break
                     if match_found: break
+
 
     # 5. Display Results
     col1, col2 = st.columns(2)

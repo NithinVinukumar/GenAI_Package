@@ -81,6 +81,8 @@ if __name__ == '__main__':
         model = create_model(client_opt)
         model.setup(client_opt) # This automatically loads the 'global' networks!
         
+        #actual training part
+        #only one iteration since local epoch is 1
         total_iters = 0
         for epoch in range(1, LOCAL_EPOCHS + 1):
             epoch_start_time = time.time()
